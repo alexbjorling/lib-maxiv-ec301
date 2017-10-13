@@ -8,7 +8,6 @@ import numpy as np
 #  if you send many commands in rapid succession, the device becomes confused and sometimes crashes completely
 
 # to do:
-#  more properties (averaging for example)
 #  simple scans or steps with and without triggering
 #  data acquisition
 
@@ -32,29 +31,36 @@ class EC301(object):
     current: single current reading
 
     Properties (r/w):
-    mode: Control loop mode, 'POTENTIOSTAT, 'GALVANOSTAT' or 'ZRA'
-    enabled: Whether or not the cell is under control of the device
-    range: Current range setting expressed as log(range/A), so -3 is 1mA, -4 is 100uA, etc.
-    autorange: Whether or not autoranging is on, only relevant to potentiostat mode.
-#   bandwidth:
-#   averaging: (avgexp)
+    mode:       Control loop mode, 'POTENTIOSTAT, 'GALVANOSTAT' or 'ZRA'
+    enabled:    Whether or not the cell is under control of the device
+    range:      Current range setting expressed as log(range/A), so -3 is 1mA, 
+                -4 is 100uA, etc, in the range -9 ... 0
+    autorange:  Whether or not autoranging is on, only relevant to 
+                potentiostat mode.
+    bandwidth:  Control loop bandwidth in log(BW/Hz) so 3 is 1kHz, 1 is 10Hz, 
+                etc, in the range 1 ... 6.
+    averaging:  The number of data points averaged for each measurement, in
+                the range 1, 2, 4, ..., 256 (where 256 gives 1 ms averaging).
     """
 
     # map from the device's mode code to clear text
     MODE_MAP = {0: 'POTENTIOSTAT', 1: 'GALVANOSTAT', 2: 'ZRA'}
 
-    # map from current range code to log(range/A), so -3 means 1mA, -6 means 1uA
+    # map from current range code to log(range/A), p. 89 of the manual
     RANGE_MAP = {i:-(i-1) for i in range(1, 10+1)}
 
+    # map from control loop bandwidth code to log(BW/hz), p. 79 of the manual
+    BANDWIDTH_MAP = {i: 6-i for i in range(5+1)}
+
     def __init__(self, host='b-nanomax-ec301-0', port=1680, 
-                 timeout=1.0, keep_socket_open=True, socket_close_delay=.02):
+                 timeout=1.0, keep_socket_open=True, socket_delay=.02):
         """
         Constructor parameters:
         host (str):                 hostname or IP
         port (int):                 port number
         timeout (float):            timeout on reading from socket, mostly affects bad commands
         keep_socket_open (bool):    whether to use a persistent socket or to open disposable ones for each command
-        socket_close_delay (float): delay after closing disposable sockets, this avoids jamming the device
+        socket_delay (float):       delay after socket commands, this avoids jamming the device
         """
         assert type(host) == str
         assert type(port) == int
@@ -62,7 +68,7 @@ class EC301(object):
         self.port = port
         self.timeout = float(timeout)
         self.keep_socket_open = keep_socket_open
-        self.socket_close_delay = socket_close_delay
+        self.socket_delay = socket_delay
 
         if self.keep_socket_open:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -105,7 +111,9 @@ class EC301(object):
         if not self.keep_socket_open:
             s.shutdown(socket.SHUT_RDWR)
             s.close()
-            time.sleep(self.socket_close_delay)
+        
+        # safety sleep        
+        #time.sleep(self.socket_delay)
 
         return answer
 
@@ -130,6 +138,7 @@ class EC301(object):
 
     @mode.setter
     def mode(self, mode):
+        assert mode in self.MODE_MAP.values()
         self._query('ecmode %d' % reversed_dict(self.MODE_MAP)[mode])
 
     ### Cell enabled? Querying gives false if the front panel switch is out.
@@ -139,6 +148,7 @@ class EC301(object):
 
     @enabled.setter
     def enabled(self, state):
+        assert val in [0, 1, True, False]
         self._query('ceenab %d' % int(state))
 
     ### Current range as log(range/A)
@@ -148,6 +158,7 @@ class EC301(object):
 
     @range.setter
     def range(self, rng):
+        assert rng in self.RANGE_MAP.values()
         target = reversed_dict(self.RANGE_MAP)[rng]
         self._query('irange %d' % target)
 
@@ -158,8 +169,33 @@ class EC301(object):
 
     @autorange.setter
     def autorange(self, val):
+        assert val in [0, 1, True, False]
         self.mode = 'POTENTIOSTAT'
         self._query('irnaut %d' % int(val))
+
+    ### Sample averaging
+    @property
+    def averaging(self):
+        return 2**int(self._query('avgexp?'))
+
+    @averaging.setter
+    def averaging(self, avg):
+        assert avg in 2**np.arange(8+1, dtype=int)
+        val = int(np.log2(avg))
+        self._query('avgexp %d' % val)
+        time.sleep(.030) # The manual specifies this.
+
+    ### Control loop bandwidth
+    @property
+    def bandwidth(self):
+        return self.BANDWIDTH_MAP[int(self._query('clbwth?'))]
+
+    @bandwidth.setter
+    def bandwidth(self, bw):
+        assert bw in self.BANDWIDTH_MAP.values()
+        target = reversed_dict(self.BANDWIDTH_MAP)[bw]
+        self._query('clbwth %d' % target)
+        
 
     ################
     ### Commands ###
@@ -197,4 +233,4 @@ class EC301(object):
             val = None
         return val
 
-ec301 = EC301(keep_socket_open=False)
+ec301 = EC301(keep_socket_open=True)
