@@ -3,13 +3,8 @@ import select
 import time
 import numpy as np
 
-# hardware notes: 
-#  you can open several sockets at the same time and send commands independently, tested this.
-#  if you send many commands in rapid succession, the device becomes confused and sometimes crashes completely
-
 # to do:
 #  simple scans or steps with and without triggering
-#  data acquisition
 
 def reversed_dict(dct):
     """
@@ -59,27 +54,21 @@ class EC301(object):
         host (str):                 hostname or IP
         port (int):                 port number
         timeout (float):            timeout on reading from socket, mostly affects bad commands
-        keep_socket_open (bool):    whether to use a persistent socket or to open disposable ones for each command
-        socket_delay (float):       delay after socket commands, this avoids jamming the device
         """
         assert type(host) == str
         assert type(port) == int
         self.host = host
         self.port = port
         self.timeout = float(timeout)
-        self.keep_socket_open = keep_socket_open
-        self.socket_delay = socket_delay
 
-        if self.keep_socket_open:
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.connect((self.host, self.port))
+        # Keep a persistent socket. If you don't then the device
+        # very easily gets jammed from repeated commands.
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.connect((self.host, self.port))
 
     def __del__(self):
-        print 'destroying EC301 object'
-        if self.keep_socket_open:
-            print 'closing persistent socket'
-            self.socket.shutdown(socket.SHUT_RDWR)
-            self.socket.close()
+        self.socket.shutdown(socket.SHUT_RDWR)
+        self.socket.close()
 
     def _query(self, cmd):
         """
@@ -88,12 +77,7 @@ class EC301(object):
         Note that you can send multiple commands separated by
         semicolons.
         """
-        # open disposable socket or use persistent one
-        if self.keep_socket_open:
-            s = self.socket
-        else:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.connect((self.host, self.port))
+        s = self.socket
 
         # send the command
         s.send(cmd + '\n')
@@ -106,14 +90,6 @@ class EC301(object):
             ready = select.select([s], [], [], self.timeout)
             if ready[0]:
                 answer = s.recv(100).strip().strip()
-
-        # close disposable sockets
-        if not self.keep_socket_open:
-            s.shutdown(socket.SHUT_RDWR)
-            s.close()
-        
-        # safety sleep        
-        #time.sleep(self.socket_delay)
 
         return answer
 
@@ -233,4 +209,4 @@ class EC301(object):
             val = None
         return val
 
-ec301 = EC301(keep_socket_open=True)
+ec301 = EC301()
