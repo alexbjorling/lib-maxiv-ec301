@@ -38,8 +38,8 @@ class EC301(object):
                 etc, in the range 1 ... 6. Set this lower to obtain smooth
                 applied potentials (CV), set it high for fast changes (step
                 or fast scans).
-    averaging:  The number of data points averaged for each measurement, in
-                the range 1, 2, 4, ..., 256 (where 256 gives 1 ms averaging).
+    averaging:  The number of 4us data points averaged for each measurement, in
+                the range 1, 2, 4, ..., 256 (where 256 gives ~1 ms averaging).
     """
 
     # map from the device's mode code to clear text
@@ -52,7 +52,7 @@ class EC301(object):
     BANDWIDTH_MAP = {i: 6-i for i in range(5+1)}
 
     def __init__(self, host='b-nanomax-ec301-0', port=1680, 
-                 timeout=1.0, keep_socket_open=True, socket_delay=.02):
+                 timeout=1.0, debug=False):
         """
         Constructor parameters:
         host (str):                 hostname or IP
@@ -64,6 +64,7 @@ class EC301(object):
         self.host = host
         self.port = port
         self.timeout = float(timeout)
+        self.do_debug = debug
 
         # Keep a persistent socket. If you don't then the device
         # very easily gets jammed from repeated commands.
@@ -73,6 +74,10 @@ class EC301(object):
     def __del__(self):
         self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
+
+    def debug(self, msg):
+        if self.do_debug:
+            print msg
 
     def _query(self, cmd, bytes=100):
         """
@@ -85,6 +90,7 @@ class EC301(object):
 
         # send the command
         s.send(cmd + '\n')
+        self.debug("Sent cmd '%s'" % cmd)
 
         # listen to response only if we asked a question
         answer = None
@@ -94,6 +100,7 @@ class EC301(object):
             ready = select.select([s], [], [], self.timeout)
             if ready[0]:
                 answer = s.recv(bytes).strip().strip()
+        self.debug("Got response '%s'" % answer)
 
         return answer
 
@@ -185,6 +192,12 @@ class EC301(object):
         assert bw in self.BANDWIDTH_MAP.values()
         target = reversed_dict(self.BANDWIDTH_MAP)[bw]
         self._query('clbwth %d' % target)
+
+    ### Last error message
+    @property
+    def error(self):
+        err = self._query('errlst?')
+        return self._query('errdcd? ' + err)
         
 
     ################
@@ -239,4 +252,38 @@ class EC301(object):
         except KeyboardInterrupt:
             self._query('getbda 0')
 
-ec301 = EC301()
+    def potentialStep(self, t0, t1, E0, E1, trigger=False, full_bandwidth=True):
+        """
+        Carry out a potential step experiment, first hold at E0 
+        for t0 seconds, then step to E1 and hold for t1 seconds.
+        """
+
+        # checks and settings
+        if not self.mode == 'POTENTIOSTAT':
+            self.mode = 'POTENTIOSTAT'
+        if full_bandwidth:
+            self.bandwidth = 6
+
+        t0 = int(round(t0 / 4e-6))
+        t1 = int(round(t1 / 4e-6))
+                                        
+        # there's something wrong here, 
+        self._query('plinit')
+        self._query('ppoint 1')
+        self._query('psteps 50')
+        self._query('plimit 1')
+        self._query('pdatap 0 %d' % int(round(E0 * 1000)))
+        self._query('pholdt 0 %d' % t0)
+        self._query('pdatap 1 %d' % int(round(E1 * 1000)))
+        self._query('pholdt 1 %d' % t1)
+        self._query('pincrm 1 0 0')
+        self._query('plendm 0')
+        self._query('pprogm?')
+        self._query('pstart 0') # this is by trial and error, the API says no arguments
+        
+ec301 = EC301(debug=False)
+#ec301.setPotential(-.1)
+#time.sleep(2)
+#ec301.potentialStep(2, 2, .45, .65)
+#print ec301.error
+
