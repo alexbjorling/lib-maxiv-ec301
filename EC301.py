@@ -74,7 +74,7 @@ class EC301(object):
         self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
 
-    def _query(self, cmd):
+    def _query(self, cmd, bytes=100):
         """
         Sends commands to EC301, listening for and returning 
         response from the device only if questions are asked.
@@ -93,7 +93,7 @@ class EC301(object):
             # so we have to avoid infinite blocking here using select.
             ready = select.select([s], [], [], self.timeout)
             if ready[0]:
-                answer = s.recv(100).strip().strip()
+                answer = s.recv(bytes).strip().strip()
 
         return answer
 
@@ -124,6 +124,8 @@ class EC301(object):
     @mode.setter
     def mode(self, mode):
         assert mode in self.MODE_MAP.values()
+        if not mode == 'POTENTIOSTAT':
+            self.autorange = False
         self._query('ecmode %d' % reversed_dict(self.MODE_MAP)[mode])
 
     ### Cell enabled? Querying gives false if the front panel switch is out.
@@ -133,7 +135,7 @@ class EC301(object):
 
     @enabled.setter
     def enabled(self, state):
-        assert val in [0, 1, True, False]
+        assert state in [0, 1, True, False]
         self._query('ceenab %d' % int(state))
 
     ### Current range as log(range/A)
@@ -212,7 +214,10 @@ class EC301(object):
             self.autorange = False
             if not self.mode == 'GALVANOSTAT':
                 self._query('ecmode 1; ceenab 1')
-            irange = np.ceil(np.log10(abs(cur/1.5)))
+            if np.isclose(cur, 0, atol=1e-9):
+                irange = min(self.RANGE_MAP.values())
+            else:
+                irange = np.ceil(np.log10(abs(cur/1.5)))
             self.range = irange
             fraction = cur / 10**irange
             result = self._query('ceenab 1; setcur %f; setcur?' % fraction)
@@ -220,5 +225,18 @@ class EC301(object):
         except:
             val = None
         return val
+
+    def receive(self):
+        """
+        Test method to receive a stream, should be threaded etc.
+        """
+        # start streaming
+        self._query('getbda 1')
+
+        try:
+            while True:
+                print self.socket.recv(100).strip().strip()
+        except KeyboardInterrupt:
+            self._query('getbda 0')
 
 ec301 = EC301()
