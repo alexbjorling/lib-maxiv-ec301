@@ -24,6 +24,8 @@ class EC301(object):
     Properties (r):
     voltage: single voltage reading
     current: single current reading
+    aux:     single reading of the three auxiliary channels,
+             returned as a length-3 array.
 
     Properties (r/w):
     mode:       Control loop mode, 'POTENTIOSTAT, 'GALVANOSTAT' or 'ZRA'
@@ -33,7 +35,9 @@ class EC301(object):
     autorange:  Whether or not autoranging is on, only relevant to 
                 potentiostat mode.
     bandwidth:  Control loop bandwidth in log(BW/Hz) so 3 is 1kHz, 1 is 10Hz, 
-                etc, in the range 1 ... 6.
+                etc, in the range 1 ... 6. Set this lower to obtain smooth
+                applied potentials (CV), set it high for fast changes (step
+                or fast scans).
     averaging:  The number of data points averaged for each measurement, in
                 the range 1, 2, 4, ..., 256 (where 256 gives 1 ms averaging).
     """
@@ -107,6 +111,11 @@ class EC301(object):
     def current(self):
         return float(self._query('ilevel?'))
 
+    ### Single auxiliary input measurements
+    @property
+    def aux(self):
+        return np.array(map(float, self._query('getaux? 4').split(', ')))
+
     ### Control mode
     @property
     def mode(self):
@@ -135,6 +144,8 @@ class EC301(object):
     @range.setter
     def range(self, rng):
         assert rng in self.RANGE_MAP.values()
+        if self.autorange:
+            self.autorange = False
         target = reversed_dict(self.RANGE_MAP)[rng]
         self._query('irange %d' % target)
 
@@ -146,7 +157,8 @@ class EC301(object):
     @autorange.setter
     def autorange(self, val):
         assert val in [0, 1, True, False]
-        self.mode = 'POTENTIOSTAT'
+        if not self.mode == 'POTENTIOSTAT':
+            self.mode = 'POTENTIOSTAT'
         self._query('irnaut %d' % int(val))
 
     ### Sample averaging
