@@ -256,6 +256,8 @@ class EC301(object):
         """
         Carry out a potential step experiment, first hold at E0 
         for t0 seconds, then step to E1 and hold for t1 seconds.
+
+        DOESN'T WORK. There's something weird with the API.
         """
 
         # checks and settings
