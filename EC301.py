@@ -26,6 +26,8 @@ class EC301(object):
     current: single current reading
     aux:     single reading of the three auxiliary channels,
              returned as a length-3 array.
+    id:      device identification string
+    error:   the last error message issued
 
     Properties (r/w):
     mode:       Control loop mode, 'POTENTIOSTAT, 'GALVANOSTAT' or 'ZRA'
@@ -40,6 +42,10 @@ class EC301(object):
                 or fast scans).
     averaging:  The number of 4us data points averaged for each measurement, in
                 the range 1, 2, 4, ..., 256 (where 256 gives ~1 ms averaging).
+
+    Commands:
+    setPotential: Set and hold a constant potential with no scan program
+    setCurrent:   Set and hold a constant current with no scan program
     """
 
     # map from the device's mode code to clear text
@@ -104,9 +110,9 @@ class EC301(object):
 
         return answer
 
-    ##################
-    ### Properties ###
-    ##################
+    ############################
+    ### Read-only properties ###
+    ############################
 
     ### Single voltage measurement
     @property
@@ -122,6 +128,21 @@ class EC301(object):
     @property
     def aux(self):
         return np.array(map(float, self._query('getaux? 4').split(', ')))
+
+    ### Device ID string
+    @property
+    def id(self):
+        return self._query('*IDN?')
+
+    ### Last error message
+    @property
+    def error(self):
+        err = self._query('errlst?')
+        return self._query('errdcd? ' + err)
+
+    #############################
+    ### Read/write properties ###
+    #############################    
 
     ### Control mode
     @property
@@ -193,13 +214,6 @@ class EC301(object):
         target = reversed_dict(self.BANDWIDTH_MAP)[bw]
         self._query('clbwth %d' % target)
 
-    ### Last error message
-    @property
-    def error(self):
-        err = self._query('errlst?')
-        return self._query('errdcd? ' + err)
-        
-
     ################
     ### Commands ###
     ################
@@ -243,6 +257,8 @@ class EC301(object):
         """
         Test method to receive a stream, should be threaded etc.
         """
+        raise NotImplementedError
+
         # start streaming
         self._query('getbda 1')
 
@@ -252,13 +268,18 @@ class EC301(object):
         except KeyboardInterrupt:
             self._query('getbda 0')
 
-    def potentialStep(self, t0, t1, E0, E1, trigger=False, full_bandwidth=True):
+    def potentialStep(self, t0=1, t1=1, E0=0, E1=1, trigger=False, full_bandwidth=True, stop=False):
         """
-        Carry out a potential step experiment, first hold at E0 
-        for t0 seconds, then step to E1 and hold for t1 seconds.
+        Carry out or cancel a potential step experiment, first hold 
+        at E0 t0 seconds, then step to E1 and hold for t1 seconds.
 
-        DOESN'T WORK. There's something weird with the API.
+        DOESN'T WORK. There's something weird with the API. Emailed SRS.
         """
+
+        # cancel potential step scan
+        if stop:
+            self._query('plstop')
+            return
 
         # checks and settings
         if not self.mode == 'POTENTIOSTAT':
@@ -266,10 +287,9 @@ class EC301(object):
         if full_bandwidth:
             self.bandwidth = 6
 
+        # the actual step program
         t0 = int(round(t0 / 4e-6))
         t1 = int(round(t1 / 4e-6))
-                                        
-        # there's something wrong here, 
         self._query('plinit')
         self._query('ppoint 1')
         self._query('psteps 50')
@@ -281,9 +301,27 @@ class EC301(object):
         self._query('pincrm 1 0 0')
         self._query('plendm 0')
         self._query('pprogm?')
-        self._query('pstart 0') # this is by trial and error, the API says no arguments
+        self._query('pstart') # this is by trial and error, the API says no arguments
+
+        # an example from the manual, fails in the same way
+#        self._query('plinit')
+#        self._query('ppoint 2')
+#        self._query('psteps 200')
+#        self._query('plimit 4')
+#        self._query('pdatap 0 100')
+#        self._query('pholdt 0 500000')
+#        self._query('pdatap 1 400')
+#        self._query('pholdt 1 62500')
+#        self._query('pincrm 1 1 1')
+#        self._query('pdatap 2 100')
+#        self._query('pholdt 2 250000')
+#        self._query('pincrm 2 0 0')
+#        self._query('plendm 1')
+#        self._query('pprogm?')
+#        self._query('pstart')
         
-ec301 = EC301(debug=False)
+        
+#ec301 = EC301(debug=False)
 #ec301.setPotential(-.1)
 #time.sleep(2)
 #ec301.potentialStep(2, 2, .45, .65)
