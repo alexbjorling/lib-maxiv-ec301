@@ -253,20 +253,33 @@ class EC301(object):
             val = None
         return val
 
-    def receive(self):
+    def receive(self, stream=False):
         """
         Test method to receive a stream, should be threaded etc.
+
+        NOT IMPLEMENTED
         """
-        raise NotImplementedError
+        import struct
 
-        # start streaming
-        self._query('getbda 1')
+        if stream:
+            # start streaming
+            self._query('getbda 1')
 
-        try:
-            while True:
-                print self.socket.recv(100).strip().strip()
-        except KeyboardInterrupt:
-            self._query('getbda 0')
+            try:
+                while True:
+                    print self.socket.recv(100).strip().strip()
+            except KeyboardInterrupt:
+                self._query('getbda 0')
+
+        else:
+            # get a single package
+            # actual length is 1064, header is 16 and footer is 24 so data is 1064, which is then 64 16-byte frames.
+            packet = self._query('polbda?', bytes=2000) 
+            header = packet[:16]
+            footer = packet[-24:]
+            # extract the first bit of the first byte
+            enabled = bool(header[0] & 0b10000000)
+            return enabled
 
     def potentialStep(self, t0=1, t1=1, E0=0, E1=1, trigger=False, full_bandwidth=True, stop=False):
         """
@@ -301,7 +314,7 @@ class EC301(object):
         self._query('pincrm 1 0 0')
         self._query('plendm 0')
         self._query('pprogm?')
-        self._query('pstart') # this is by trial and error, the API says no arguments
+        self._query('pstart 0') # this is by trial and error, the API says no arguments
 
         # an example from the manual, fails in the same way
 #        self._query('plinit')
