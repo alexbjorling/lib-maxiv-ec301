@@ -2,9 +2,15 @@ import socket
 import select
 import time
 import numpy as np
+import struct
 
 # to do:
-#  simple scans or steps with and without triggering
+#   * create central data buffers and scanning flag
+#   * each program (like potentialStep) should spawn a stream reading thread 
+#   * this thread populates the buffer only using data points where the running bit is high and modifies the central scanning flag when done ('STARTING', 'RUNNING', 'READY' or so)
+#   * a central readout method clears the buffer and sets the flag back
+#   * keep in mind that you can't stream and talk with commands at the same time
+#   * in the long run, should we just keep streaming all the time and not ask socket queries? like keep a central "latest package" and just check against that in the properties? can you still send commands?
 
 def reversed_dict(dct):
     """
@@ -28,6 +34,8 @@ class EC301(object):
              returned as a length-3 array.
     id:      device identification string
     error:   the last error message issued
+    running: is the device running a scan program?
+    armed:   is the device armed and waiting for triggers?
 
     Properties (r/w):
     mode:       Control loop mode, 'POTENTIOSTAT, 'GALVANOSTAT' or 'ZRA'
@@ -110,6 +118,66 @@ class EC301(object):
 
         return answer
 
+    def _receive(self, stream=False):
+        """
+        Test method to receive a stream, should be threaded etc.
+
+        HALF-IMPLEMENTED
+        """
+
+        if stream:
+            raise NotImplementedError
+            # start streaming
+            self._query('getbda 1')
+
+            try:
+                while True:
+                    print self.socket.recv(100).strip().strip()
+            except KeyboardInterrupt:
+                self._query('getbda 0')
+
+        else:
+            # get a single package
+            p = self._query('polbda?', bytes=2000)
+            E, I, aux, running, raw = self._parse_packet(p)
+        return E, I, running
+
+    def _parse_packet(self, packet):
+        """
+        Parses a single data packet.
+
+        Returns ndarrays:
+
+        E: potential
+        I: current
+        aux: auxiliary input
+        running: whether for each data point a programmed scan is running
+        state: raw long int encoding the state for each point
+        """
+
+        # parse header
+        pkt_counter, payload = struct.unpack('xxHIxxxxxxxx', packet[:16])
+        n_frames = payload / 16
+        # fast state bitfields, ADC, I data, E data
+        frame_fmt = 'ifff'
+        # flags for ramp, pulse, and arbitrary waveform
+        scan_running_mask = 1 << 22 | 1 << 19 | 1 << 11
+        # loop over frames to gather data
+        E = np.empty(n_frames, dtype=np.float32)
+        I = np.empty(n_frames, dtype=np.float32)
+        aux = np.empty(n_frames, dtype=np.float32)
+        running = np.empty(n_frames, dtype=bool)
+        state = np.empty(n_frames, dtype=np.int32)
+        for i in range(n_frames):
+            fast, aux_, I_, E_ = struct.unpack(frame_fmt, packet[16+16*i:16+16*(i+1)])
+            running_ = bool(fast & scan_running_mask)
+            E[i] = E_
+            I[i] = I_
+            aux[i] = aux_
+            running[i] = running_
+            state[i] = fast
+        return E, I, aux, running, state
+
     ############################
     ### Read-only properties ###
     ############################
@@ -139,6 +207,17 @@ class EC301(object):
     def error(self):
         err = self._query('errlst?')
         return self._query('errdcd? ' + err)
+
+    ### Running
+    @property
+    def running(self):
+        raise NotImplementedError # this command doesn't behave, device always gives true. Emailed SRS.
+        return bool(int(self._query('scntrg?')))
+
+    ### Armed
+    @property
+    def armed(self):
+        return bool(int(self._query('trgarm?')))
 
     #############################
     ### Read/write properties ###
@@ -253,34 +332,6 @@ class EC301(object):
             val = None
         return val
 
-    def receive(self, stream=False):
-        """
-        Test method to receive a stream, should be threaded etc.
-
-        NOT IMPLEMENTED
-        """
-        import struct
-
-        if stream:
-            # start streaming
-            self._query('getbda 1')
-
-            try:
-                while True:
-                    print self.socket.recv(100).strip().strip()
-            except KeyboardInterrupt:
-                self._query('getbda 0')
-
-        else:
-            # get a single package
-            # actual length is 1064, header is 16 and footer is 24 so data is 1064, which is then 64 16-byte frames.
-            packet = self._query('polbda?', bytes=2000) 
-            header = packet[:16]
-            footer = packet[-24:]
-            # extract the first bit of the first byte
-            enabled = bool(header[0] & 0b10000000)
-            return enabled
-
     def potentialStep(self, t0=1, t1=1, E0=0, E1=1, trigger=False, 
                 full_bandwidth=True, return_to_E0=False, stop=False):
         """
@@ -330,7 +381,6 @@ class EC301(object):
         self._query('plendm 1')
         self._query('pprogm?')
         self._query('pstart %d' % trgcode)
-
 
 if __name__ == '__main__':        
     ec301 = EC301(debug=False)
