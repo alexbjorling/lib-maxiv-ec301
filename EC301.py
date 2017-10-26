@@ -281,12 +281,11 @@ class EC301(object):
             enabled = bool(header[0] & 0b10000000)
             return enabled
 
-    def potentialStep(self, t0=1, t1=1, E0=0, E1=1, trigger=False, full_bandwidth=True, stop=False):
+    def potentialStep(self, t0=1, t1=1, E0=0, E1=1, trigger=False, 
+                full_bandwidth=True, return_to_E0=False, stop=False):
         """
         Carry out or cancel a potential step experiment, first hold 
         at E0 t0 seconds, then step to E1 and hold for t1 seconds.
-
-        DOESN'T WORK. There's something weird with the API. Emailed SRS.
         """
 
         # cancel potential step scan
@@ -300,43 +299,43 @@ class EC301(object):
         if full_bandwidth:
             self.bandwidth = 6
 
-        # the actual step program
+        # format the parameters
         t0 = int(round(t0 / 4e-6))
         t1 = int(round(t1 / 4e-6))
-        self._query('plinit')
-        self._query('ppoint 1')
-        self._query('psteps 50')
-        self._query('plimit 1')
-        self._query('pdatap 0 %d' % int(round(E0 * 1000)))
-        self._query('pholdt 0 %d' % t0)
-        self._query('pdatap 1 %d' % int(round(E1 * 1000)))
-        self._query('pholdt 1 %d' % t1)
-        self._query('pincrm 1 0 0')
-        self._query('plendm 0')
-        self._query('pprogm?')
-        self._query('pstart 0') # this is by trial and error, the API says no arguments
+        E0 = int(round(E0 * 1000))
+        E1 = int(round(E1 * 1000))
+        Efinal = {True: E0, False: E1}[return_to_E0]
+        trgcode = {True: 1, False: 0}[trigger]
 
-        # an example from the manual, fails in the same way
-#        self._query('plinit')
-#        self._query('ppoint 2')
-#        self._query('psteps 200')
-#        self._query('plimit 4')
-#        self._query('pdatap 0 100')
-#        self._query('pholdt 0 500000')
-#        self._query('pdatap 1 400')
-#        self._query('pholdt 1 62500')
-#        self._query('pincrm 1 1 1')
-#        self._query('pdatap 2 100')
-#        self._query('pholdt 2 250000')
-#        self._query('pincrm 2 0 0')
-#        self._query('plendm 1')
-#        self._query('pprogm?')
-#        self._query('pstart')
-        
-        
-#ec301 = EC301(debug=False)
-#ec301.setPotential(-.1)
-#time.sleep(2)
-#ec301.potentialStep(2, 2, .45, .65)
-#print ec301.error
+        # the step program interface is very hard to understand. after
+        # much playing around it seems you have to add more points than
+        # you think. this works.
+        self._query('plinit')
+        self._query('scantp 1')
+        self._query('scanem 1')
+        self._query('psteps 0')
+        self._query('plimit 1')
+        self._query('ppoint 3')
+        self._query('pdatap 0 %d' % E0)
+        self._query('pholdt 0 %d' % t0)
+        self._query('pdatap 1 %d' % E1)
+        self._query('pholdt 1 %d' %t1) #
+        self._query('pincrm 1 1 1')
+        self._query('pdatap 2 %d' % Efinal)
+        self._query('pholdt 2 10')
+        self._query('pincrm 2 1 1')
+        self._query('pdatap 3 %d' % Efinal)
+        self._query('pholdt 3 10')
+        self._query('pincrm 3 0 0')
+        self._query('plendm 1')
+        self._query('pprogm?')
+        self._query('pstart %d' % trgcode)
+
+
+if __name__ == '__main__':        
+    ec301 = EC301(debug=False)
+    ec301.setPotential(-.1)
+    time.sleep(2)
+    ec301.potentialStep(2, 2, .45, .65)
+    print ec301.error
 
