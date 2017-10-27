@@ -6,8 +6,8 @@ import struct
 from Stream import Stream
 
 # to do:
+#   * test threaded streams
 #   * investigate why it doesn't trigger
-#   * at what point should the scanning be threaded?
 #   * do CV
 #   * why is there so much current noise?
 
@@ -120,58 +120,6 @@ class EC301(object):
         self.debug("Got response '%s'" % answer)
 
         return answer
-
-    def _poll_binary_packet(self):
-        """
-        Polls a single binary data packet from the device.
-
-        Returns ndarrays:
-
-        E: potential
-        I: current
-        aux: auxiliary input
-        running: whether for each data point a programmed scan is running
-        raw: long int with binary encoding of the state for each point
-        """
-        p = self._query('polbda?', bytes=2000)
-        E, I, aux, running, raw = self._parse_binary_packet(p)
-        return E, I, aux, running, raw
-
-    def _parse_binary_packet(self, packet):
-        """
-        Parses a single binary data packet.
-
-        Returns ndarrays:
-
-        E: potential
-        I: current
-        aux: auxiliary input
-        running: whether for each data point a programmed scan is running
-        raw: long int with binary encoding of the state for each point
-        """
-
-        # parse header
-        pkt_counter, payload = struct.unpack('xxHIxxxxxxxx', packet[:16])
-        n_frames = payload / 16
-        # fast state bitfields, ADC, I data, E data
-        frame_fmt = 'ifff'
-        # flags for ramp, pulse, and arbitrary waveform
-        scan_running_mask = 1 << 22 | 1 << 19 | 1 << 11
-        # loop over frames to gather data
-        E = np.empty(n_frames, dtype=np.float32)
-        I = np.empty(n_frames, dtype=np.float32)
-        aux = np.empty(n_frames, dtype=np.float32)
-        running = np.empty(n_frames, dtype=bool)
-        raw = np.empty(n_frames, dtype=np.uint32)
-        for i in range(n_frames):
-            fast, aux_, I_, E_ = struct.unpack(frame_fmt, packet[16+16*i:16+16*(i+1)])
-            running_ = bool(fast & scan_running_mask)
-            E[i] = E_
-            I[i] = I_
-            aux[i] = aux_
-            running[i] = running_
-            raw[i] = fast
-        return E, I, aux, running, raw
 
     ############################
     ### Read-only properties ###
