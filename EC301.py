@@ -3,14 +3,13 @@ import select
 import time
 import numpy as np
 import struct
+from Stream import Stream
 
 # to do:
-#   * create central data buffers and scanning flag
-#   * each program (like potentialStep) should spawn a stream reading thread 
-#   * this thread populates the buffer only using data points where the running bit is high and modifies the central scanning flag when done ('STARTING', 'RUNNING', 'READY' or so)
-#   * a central readout method clears the buffer and sets the flag back
-#   * keep in mind that you can't stream and talk with commands at the same time
-#   * in the long run, should we just keep streaming all the time and not ask socket queries? like keep a central "latest package" and just check against that in the properties? can you still send commands?
+#   * investigate why it doesn't trigger
+#   * at what point should the scanning be threaded?
+#   * do CV
+#   * why is there so much current noise?
 
 def reversed_dict(dct):
     """
@@ -375,10 +374,23 @@ class EC301(object):
         self._query('pprogm?')
         self._query('pstart %d' % trgcode)
 
+        stream = Stream(self, complete_scan=True, max_data_points=None, debug=self.do_debug)
+        stream.start()
+
+        return stream.E, stream.I
+
 if __name__ == '__main__':        
     ec301 = EC301(debug=False)
     ec301.setPotential(-.1)
+    ec301.averaging=256
     time.sleep(2)
-    ec301.potentialStep(2, 2, .45, .65)
+    E, I = ec301.potentialStep(2, 2, .45, .65, return_to_E0=True, trigger=False)
+    print len(E), len(I)
     print ec301.error
+    del ec301
+
+    import matplotlib.pyplot as plt
+    plt.figure(); plt.plot(E)
+    plt.figure(); plt.plot(I)
+    plt.show()
 
