@@ -52,8 +52,9 @@ class EC301(object):
                 the range 1, 2, 4, ..., 256 (where 256 gives ~1 ms averaging).
 
     Commands:
-    setPotential: Set and hold a constant potential with no scan program
-    setCurrent:   Set and hold a constant current with no scan program
+    setPotential:   Set and hold a constant potential with no scan program
+    setCurrent:     Set and hold a constant current with no scan program
+    potentialStep:  Run a potential step experiment and record the data
     """
 
     # map from the device's mode code to clear text
@@ -118,33 +119,9 @@ class EC301(object):
 
         return answer
 
-    def _receive(self, stream=False):
+    def _poll_binary_packet(self):
         """
-        Test method to receive a stream, should be threaded etc.
-
-        HALF-IMPLEMENTED
-        """
-
-        if stream:
-            raise NotImplementedError
-            # start streaming
-            self._query('getbda 1')
-
-            try:
-                while True:
-                    print self.socket.recv(100).strip().strip()
-            except KeyboardInterrupt:
-                self._query('getbda 0')
-
-        else:
-            # get a single package
-            p = self._query('polbda?', bytes=2000)
-            E, I, aux, running, raw = self._parse_packet(p)
-        return E, I, running
-
-    def _parse_packet(self, packet):
-        """
-        Parses a single data packet.
+        Polls a single binary data packet from the device.
 
         Returns ndarrays:
 
@@ -152,7 +129,23 @@ class EC301(object):
         I: current
         aux: auxiliary input
         running: whether for each data point a programmed scan is running
-        state: raw long int encoding the state for each point
+        raw: long int with binary encoding of the state for each point
+        """
+        p = self._query('polbda?', bytes=2000)
+        E, I, aux, running, raw = self._parse_binary_packet(p)
+        return E, I, aux, running, raw
+
+    def _parse_binary_packet(self, packet):
+        """
+        Parses a single binary data packet.
+
+        Returns ndarrays:
+
+        E: potential
+        I: current
+        aux: auxiliary input
+        running: whether for each data point a programmed scan is running
+        raw: long int with binary encoding of the state for each point
         """
 
         # parse header
@@ -167,7 +160,7 @@ class EC301(object):
         I = np.empty(n_frames, dtype=np.float32)
         aux = np.empty(n_frames, dtype=np.float32)
         running = np.empty(n_frames, dtype=bool)
-        state = np.empty(n_frames, dtype=np.int32)
+        raw = np.empty(n_frames, dtype=np.uint32)
         for i in range(n_frames):
             fast, aux_, I_, E_ = struct.unpack(frame_fmt, packet[16+16*i:16+16*(i+1)])
             running_ = bool(fast & scan_running_mask)
@@ -175,8 +168,8 @@ class EC301(object):
             I[i] = I_
             aux[i] = aux_
             running[i] = running_
-            state[i] = fast
-        return E, I, aux, running, state
+            raw[i] = fast
+        return E, I, aux, running, raw
 
     ############################
     ### Read-only properties ###
