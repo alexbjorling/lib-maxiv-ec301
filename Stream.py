@@ -3,6 +3,7 @@ import select
 import struct
 import numpy as np
 from collections import deque
+import threading
 
 BUF_SIZE = 4096
 TIMEOUT = .1
@@ -26,14 +27,15 @@ def _clear_incoming_buffer(s):
 
 class Stream(object):
     """
-    Class responsible for catching binary data streams from the EC301.
+    Class responsible for capturing and parsing binary data
+    streams from the EC301.
 
     One-time objects, create a new instance for every scan.
 
     Data is accessed with the public attributes, the member 'done'
     is True when data collection is finished.
     """
-    def __init__(self, dev, complete_scan=True, max_data_points=None, debug=False):
+    def __init__(self, dev=None, complete_scan=True, max_data_points=None, debug=False):
         """
         dev (EC301 object):     EC301 device instance to speak to.
         complete_scan (bool):   Close the stream when a running scan finishes.
@@ -60,7 +62,18 @@ class Stream(object):
 
     def start(self):
         """
-        Start stream and record data.
+        Start stream and record/parse data in a separate thread.
+        """
+        if self.done:
+            raise Exception('This stream has already been run.')
+        if self.dev is None:
+            raise Exception('This stream is probably a dummy as it\'s not associated with an EC301 instance.')
+        t = threading.Thread(target=self._start)
+        t.start()
+
+    def _start(self):
+        """
+        Actual worker function.
         """
         self.debug('clearing %d bytes first' % len(_clear_incoming_buffer(self.dev.socket)))
         self.dev._query('getbda 1')

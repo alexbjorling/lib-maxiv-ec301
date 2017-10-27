@@ -85,6 +85,9 @@ class EC301(object):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect((self.host, self.port))
 
+        # Always keep a Stream instance to allow checking the done state
+        self.stream = Stream(self)
+
     def __del__(self):
         self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
@@ -372,19 +375,25 @@ class EC301(object):
         self._query('pincrm 3 0 0')
         self._query('plendm 1')
         self._query('pprogm?')
+
+        # make a stream instance and start recording
+        self.stream = Stream(self, complete_scan=True, max_data_points=None, debug=self.do_debug)
+        self.stream.start()
+
+        # start the scan
         self._query('pstart %d' % trgcode)
 
-        stream = Stream(self, complete_scan=True, max_data_points=None, debug=self.do_debug)
-        stream.start()
-
-        return stream.E, stream.I
 
 if __name__ == '__main__':        
     ec301 = EC301(debug=False)
     ec301.setPotential(-.1)
     ec301.averaging=256
     time.sleep(2)
-    E, I = ec301.potentialStep(2, 2, .45, .65, return_to_E0=True, trigger=False)
+    ec301.potentialStep(2, 2, .45, .65, return_to_E0=True, trigger=False)
+    while not ec301.stream.done:
+        time.sleep(.1)
+    E = ec301.stream.E
+    I = ec301.stream.I
     print len(E), len(I)
     print ec301.error
     del ec301
@@ -393,4 +402,3 @@ if __name__ == '__main__':
     plt.figure(); plt.plot(E)
     plt.figure(); plt.plot(I)
     plt.show()
-
