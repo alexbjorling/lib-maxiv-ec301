@@ -6,9 +6,10 @@ import struct
 from Stream import Stream
 
 # to do:
-#   * investigate why it doesn't trigger
+#   * fix the potential step triggering weirdness (emailed SRS)
 #   * get rid of CV workaround (below, emailed SRS)
-#   * why is there so much current noise?
+#   * just collecting data with no scan
+#   * learn about noise and grounding
 #   * the current setup is fine for bursts, but for fly scanning we need continuous triggering, so either re-arm between shots (bad idea, will require longer latencies) or do acquisitions over the full line and sample the trigger on aux.
 
 # sardana outline:
