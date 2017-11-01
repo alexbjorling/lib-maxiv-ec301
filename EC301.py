@@ -30,8 +30,12 @@ class EC301(object):
     """
     Driver class for the SRS EC301 potentiostat.
 
-    For now only implements software-triggered direct control 
-    of potential or current, with no data acquisition.
+    Implements direct control of current and potential, potential
+    step and cycle scans, and data acquisition. All hardware-triggered
+    functionality relies on the trigger signal also being connected
+    to the synchronous ADC input for filtering. Trigger pulses should 
+    therefore not be shorter than the data acquisition period 
+    (4 us - 1 ms depending on settings).
 
     Properties (r):
     voltage: single voltage reading
@@ -324,7 +328,9 @@ class EC301(object):
         self._query('pprogm?')
 
         # make a stream instance and start recording
-        self.stream = Stream(self, complete_scan=True, max_data_points=None, debug=self.do_debug)
+        self.stream = Stream(self, complete_scan=True, max_data_points=None,
+                             filter_pre_scan=True, filter_pre_trig=trigger,
+                             debug=self.do_debug)
         self.stream.start()
 
         # start the scan
@@ -384,7 +390,9 @@ class EC301(object):
         self._query('ramppg? 0')
 
         # make a stream instance and start recording
-        self.stream = Stream(self, complete_scan=True, max_data_points=None, debug=self.do_debug)
+        self.stream = Stream(self, complete_scan=True, max_data_points=None,
+                             filter_pre_scan=True, filter_pre_trig=trigger,
+                             debug=self.do_debug)
         self.stream.start()
 
         # start the scan
@@ -444,7 +452,7 @@ class EC301(object):
         time.sleep(2)
         self.range = -3
         print 'running: %s' % str(self.running)
-        self.potentialCycle(v=.300, E0=.05, E1=.8, E2=-.2, cycles=2, trigger=trig)
+        self.potentialCycle(v=.500, E0=.05, E1=.8, E2=-.2, cycles=1, trigger=trig)
         print 'running: %s' % str(self.running)
         while not self.stream.done:
             print 'data points so far: %d, running: %s' % (len(self.stream.E), str(self.running))
@@ -473,7 +481,7 @@ if __name__ == '__main__':
     """
     Example usage.
     """
-    ec301 = EC301(debug=False)
+    ec301 = EC301(debug=True)
     #ec301.example_step(trig=0)
     ec301.example_cv(trig=1)
 

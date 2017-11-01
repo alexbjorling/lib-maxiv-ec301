@@ -35,9 +35,14 @@ class Stream(object):
     Data is accessed with the public attributes, the member 'done'
     is True when data collection is finished.
     """
-    def __init__(self, dev=None, complete_scan=True, max_data_points=None, debug=False):
+    def __init__(self, dev=None, filter_pre_scan=False, filter_pre_trig=False, 
+                 complete_scan=True, max_data_points=None, debug=False):
         """
         dev (EC301 object):     EC301 device instance to speak to.
+        filter_pre_scan:        Ignore data coming in before a scan has started
+        filter_pre_trig:        Ignore data coming in before the trigger has been
+                                activated the first time. Requires the trigger to be
+                                connected to the aux ("synchronous ADC input") channel.
         complete_scan (bool):   Close the stream when a running scan finishes.
         max_data_points (int):  Close the stream if this many data points are read.
         """
@@ -45,6 +50,8 @@ class Stream(object):
         self.dev = dev
         self.complete_scan = bool(complete_scan)
         self.max_data_points = int(max_data_points) if max_data_points is not None else None
+        self.filter_pre_scan = filter_pre_scan
+        self.filter_pre_trig = filter_pre_trig
         self.buf = ''
         self.do_debug = debug
 
@@ -102,6 +109,8 @@ class Stream(object):
         frame_fmt = 'ifff'                              # data frame field format
         scan_running_mask = 1 << 22 | 1 << 19 | 1 << 11 # within the fast bit field, these flags mark scan running
 
+        scan_started = False
+        first_trigger_detected = False
         while True:
             # do we have enough data to read a header?
             while len(self.buf) < offset + 16:
@@ -116,8 +125,19 @@ class Stream(object):
                 yield
             self.debug("*reading complete packet %d with %d frames"%(pkt_counter, n_frames))
             for i in range(n_frames):
+                # unpack data
                 fast, aux_, I_, E_ = struct.unpack(frame_fmt, self.buf[16+16*i+offset:16+16*(i+1)+offset])
                 running_ = bool(fast & scan_running_mask)
+                # filtering conditions
+                first_trigger_detected |= (aux_ < 1.0)
+                if self.filter_pre_trig and not first_trigger_detected:
+                    self.debug('filtered out a pre-trigger frame')
+                    continue
+                scan_started |= running_
+                if self.filter_pre_scan and not scan_started:
+                    self.debug('filtered out a pre-scan frame')
+                    continue
+                # store data
                 self.E.append(E_)
                 self.I.append(I_)
                 self.aux.append(aux_)
