@@ -6,9 +6,8 @@ import struct
 from Stream import Stream
 
 # to do:
-#   * test threaded streams
 #   * investigate why it doesn't trigger
-#   * do CV
+#   * finalize CV
 #   * why is there so much current noise?
 #   * the current setup is fine for bursts, but for fly scanning we need continuous triggering, so either re-arm between shots (bad idea, will require longer latencies) or do acquisitions over the full line and sample the trigger on aux.
 
@@ -333,6 +332,56 @@ class EC301(object):
         # start the scan
         self._query('pstart %d' % trgcode)
 
+    def potentialCycle(self, t0=1, E0=.2, E1=1, E2=0, v=.100, cycles=1, trigger=False):
+        """
+        Carry out a CV experiment.
+        
+        t0, E0: Initial hold, time and potential
+        E1:         First vertex, determines the initial scan direction
+        E2:         Second vertex
+        v:          Scan rate
+        cycles:     How many times to arrive at E2
+        trigger:    True for hardware triggered scans 
+        """
+
+        # checks and settings
+        if not self.mode == 'POTENTIOSTAT':
+            self.mode = 'POTENTIOSTAT'
+
+        # format the parameters
+        assert cycles > 0
+        rate = int(round(v / 100e-6))
+        hold = int(round(t0 / 100e-6))
+        E0 = int(round(E0 * 1000))
+        E1 = int(round(E1 * 1000))
+        E2 = int(round(E2 * 1000))
+        trgcode = {True: 4, False: 0}[trigger]
+
+        # write the program
+        self._query('ramprs')
+        self._query('ramppt 0 %d' % E0)
+        self._query('ramppt 1 %d' % E1)
+        self._query('ramppt 2 %d' % E2)
+        self._query('ramprt 0 %d' % rate)
+        self._query('ramprt 1 %d' % rate)
+        self._query('rampdt 0 %d' % hold)
+        self._query('rampdt 1 0')
+        self._query('rampdt 2 0')
+        if cycles > 1:
+            self._query('scantp 0')
+            self._query('rampcy %d' % (cycles-1))
+        else:
+            self._query('scantp 1')
+        self._query('scanem 1')
+        self._query('ramppg? 0')
+
+        # make a stream instance and start recording
+        self.stream = Stream(self, complete_scan=True, max_data_points=None, debug=self.do_debug)
+        self.stream.start()
+
+        # start the scan
+        self._query('rampst %d' % trgcode)
+
     def stop(self):
         """
         Stop any of the implemented scan programs.
@@ -376,6 +425,30 @@ class EC301(object):
         plt.figure(); plt.plot(t, I)
         plt.show()
         return E, I, aux
+
+    def example_cv(self):
+        """
+        An illustration and test of the potential step program and data acquisition.
+        """
+        self.setPotential(-.1)
+        self.averaging=256
+        time.sleep(2)
+        self.range = -3
+        self.potentialCycle(v=.300, E0=.05, E2=-.2, E1=.8, cycles=1)
+        while not self.stream.done:
+            print 'data points so far: %d' % len(self.stream.E)
+            time.sleep(.1)
+        E = self.stream.E
+        I = self.stream.I
+        print len(E), len(I)
+        print self.error
+
+        import matplotlib.pyplot as plt
+        t = np.arange(len(E)) * 4e-6 * 256
+        plt.figure(); plt.plot(t, E)
+        plt.figure(); plt.plot(t, I)
+        plt.show()
+        return E, I
 
 if __name__ == '__main__':        
     """
