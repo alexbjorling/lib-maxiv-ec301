@@ -8,7 +8,6 @@ from Stream import Stream
 # to do:
 #   * fix the potential step triggering weirdness (emailed SRS)
 #   * get rid of CV workaround (below, emailed SRS)
-#   * just collecting data with no scan
 #   * learn about noise and grounding
 
 # sardana outline:
@@ -64,6 +63,7 @@ class EC301(object):
     Commands:
     setPotential:   Set and hold a constant potential with no scan program
     setCurrent:     Set and hold a constant current with no scan program
+    acquire:        Acquire data without applying a scan program
     potentialStep:  Run a potential step experiment and record the data
     potentialCycle: Run a Cyclic voltammetry experiment and record the data
     stop:           Stop any ongoing scans
@@ -286,6 +286,22 @@ class EC301(object):
             val = None
         return val
 
+    def acquire(self, time=1.0, trigger=False):
+        """
+        Simple data acquisition without a scan program. The time
+        is rounded up to a whole number of measurement intervals.
+        Using the trigger doesn't actually arm the device, but
+        simply the data stream to ignore everything before the
+        first trigger event.
+        """
+        datapoints = int(np.ceil(time / (4e-6 * self.averaging)))
+        self.debug('Collecting %d data points, real time %f s'
+            % (datapoints, datapoints * 4e-6 * self.averaging))
+        self.stream = Stream(self, max_data_points=datapoints,
+                             filter_pre_trig=trigger,
+                             debug=self.do_debug)
+        self.stream.start()
+
     def potentialStep(self, t0=1, t1=1, E0=0, E1=1, trigger=False, 
                 full_bandwidth=True, return_to_E0=True):
         """
@@ -406,6 +422,22 @@ class EC301(object):
         """
         self._query('plstop')
         self._query('rampen')
+        # acquire() doesn't listen to scan state, so needs the stream cancelled
+        self.stream.cancel = True
+
+    def readout(self):
+        """
+        Get the last data captured. 
+
+        Returns:
+        t:      time
+        E:      potential
+        I:      current
+        aux:    synchronous ADC input, used to monitor the trigger
+        raw:    4-byte bit representation of the state at each data point        
+        """
+        t = np.arange(len(self.stream.E)) * 4e-6 * self.averaging
+        return t, self.stream.E, self.stream.I, self.stream.aux, self.stream.raw
     
     #######################################################
     ### Illustrations and tests, not for Tango exposure ###
@@ -431,9 +463,7 @@ class EC301(object):
                 # or you can stop the scan (the stream then detects this and also finishes)
                 self.stop()
             time.sleep(.1)
-        E = self.stream.E
-        I = self.stream.I
-        aux = self.stream.I
+        t, E, I, aux, raw = ec301.readout()
         print len(E), len(I)
         print self.error
 
@@ -466,8 +496,7 @@ class EC301(object):
         self.stop()             #
         self.setPotential(.05)  #
         #########################
-        E = self.stream.E
-        I = self.stream.I
+        t, E, I, aux, raw = self.readout()
         print len(E), len(I)
         print self.error
 
