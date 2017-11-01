@@ -10,13 +10,14 @@ from Stream import Stream
 #   * get rid of CV workaround (below, emailed SRS)
 #   * just collecting data with no scan
 #   * learn about noise and grounding
-#   * the current setup is fine for bursts, but for fly scanning we need continuous triggering, so either re-arm between shots (bad idea, will require longer latencies) or do acquisitions over the full line and sample the trigger on aux.
 
 # sardana outline:
-#   * like with the PI/scancontrol device, use different controllers simple potential/current application and for scans
+#   * like with the PI/scancontrol device, use different controllers for simple potential/current application and for scans
 #       * ec301_ctrl: motors connected to setPotential and setCurrent (with controller attributes for range etc), pstat/gstat mode can be switched automatically if needed
 #       * ec301_acq_ctrl: 1d exp channels echem_E, echem_I, echem_aux, echem_raw, echem_running (or filter that out?). One of these will be the master axis that starts the scan.
 #   * the type of scan and the parameters has to be configured before acquisition, with controller attributes
+#   * because of the two controllers, we will need a Tango device
+#   * the Tango device will have to filter and average fly scanning data
 
 def reversed_dict(dct):
     """
