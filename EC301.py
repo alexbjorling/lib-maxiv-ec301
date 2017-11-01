@@ -94,6 +94,9 @@ class EC301(object):
         # Always keep a Stream instance to allow checking the done state
         self.stream = Stream(self)
 
+        # Stop any lingering scans
+        self.stop()
+
     def __del__(self):
         self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
