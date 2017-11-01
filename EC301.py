@@ -349,6 +349,7 @@ class EC301(object):
                              filter_pre_scan=True, filter_pre_trig=trigger,
                              debug=self.do_debug)
         self.stream.start()
+        time.sleep(.1) # avoids missing data
 
         # start the scan
         self._query('trgarm 0')
@@ -411,6 +412,7 @@ class EC301(object):
                              filter_pre_scan=True, filter_pre_trig=trigger,
                              debug=self.do_debug)
         self.stream.start()
+        time.sleep(.1) # avoids missing data
 
         # start the scan
         self._query('trgarm 0')
@@ -452,6 +454,7 @@ class EC301(object):
         time.sleep(2)
         self.range = -5
         self.potentialStep(t0=2, t1=3, E0=.02, E1=.05, return_to_E0=True, trigger=trig)
+
         t0 = time.time()
         while not self.stream.done:
             print 'data points so far: %d' % len(self.stream.E)
@@ -463,12 +466,12 @@ class EC301(object):
                 # or you can stop the scan (the stream then detects this and also finishes)
                 self.stop()
             time.sleep(.1)
+
         t, E, I, aux, raw = ec301.readout()
         print len(E), len(I)
         print self.error
 
         import matplotlib.pyplot as plt
-        t = np.arange(len(E)) * 4e-6 * 256
         plt.figure(); plt.plot(t, E)
         plt.figure(); plt.plot(t, I)
         plt.show()
@@ -482,13 +485,11 @@ class EC301(object):
         self.averaging=256
         time.sleep(2)
         self.range = -3
-        print 'running: %s' % str(self.running)
+
         self.potentialCycle(v=.500, E0=.05, E1=.8, E2=-.2, cycles=1, trigger=trig)
-        print 'running: %s' % str(self.running)
         while not self.stream.done:
             print 'data points so far: %d, running: %s' % (len(self.stream.E), str(self.running))
             time.sleep(.1)
-        print 'running: %s' % str(self.running)
         # there's a bug in the CV protocol (emailed SRS about this),
         # the device doesn't leave its scanning mode. This means you
         # can't set a new potential afterwards, although the scanning
@@ -496,12 +497,9 @@ class EC301(object):
         self.stop()             #
         self.setPotential(.05)  #
         #########################
-        t, E, I, aux, raw = self.readout()
-        print len(E), len(I)
-        print self.error
 
+        t, E, I, aux, raw = self.readout()
         import matplotlib.pyplot as plt
-        t = np.arange(len(E)) * 4e-6 * 256
         plt.figure(); plt.plot(t, E)
         plt.figure(); plt.plot(t, I)
         plt.show()
@@ -512,6 +510,6 @@ if __name__ == '__main__':
     Example usage.
     """
     ec301 = EC301(debug=True)
-    #ec301.example_step(trig=0)
-    ec301.example_cv(trig=1)
+    ec301.example_step(trig=0)
+    ec301.example_cv(trig=0)
 
