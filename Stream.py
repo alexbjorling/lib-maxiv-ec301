@@ -55,6 +55,7 @@ class Stream(object):
         self.running = []
         self.raw = []
         self.done = False
+        self.cancel = False
 
     def debug(self, msg):
         if self.do_debug:
@@ -80,6 +81,9 @@ class Stream(object):
         t0 = time.time()
         self.buf = ''
         for i_ in self.parser():
+            if self.cancel:
+                self.cancel = False
+                break
             ready = select.select([self.dev.socket], [], [], TIMEOUT)
             if ready[0]:
                 self.buf += self.dev.socket.recv(BUF_SIZE)
