@@ -283,16 +283,11 @@ class EC301(object):
         return val
 
     def potentialStep(self, t0=1, t1=1, E0=0, E1=1, trigger=False, 
-                full_bandwidth=True, return_to_E0=False, stop=False):
+                full_bandwidth=True, return_to_E0=True):
         """
-        Carry out or cancel a potential step experiment, first hold 
-        at E0 t0 seconds, then step to E1 and hold for t1 seconds.
+        Carry out a potential step experiment, first hold at E0 for t0 
+        seconds, then step to E1 and hold for t1 seconds.
         """
-
-        # cancel potential step scan
-        if stop:
-            self._query('plstop')
-            return
 
         # checks and settings
         if not self.mode == 'POTENTIOSTAT':
@@ -338,6 +333,12 @@ class EC301(object):
         # start the scan
         self._query('pstart %d' % trgcode)
 
+    def stop(self):
+        """
+        Stop any of the implemented scan programs.
+        """
+        self._query('plstop')
+        self._query('rampen')
 
 if __name__ == '__main__':        
     ec301 = EC301(debug=False)
