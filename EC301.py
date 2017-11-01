@@ -309,22 +309,20 @@ class EC301(object):
         # much playing around it seems you have to add more points than
         # you think. this works.
         self._query('plinit')
-        self._query('scantp 1')
-        self._query('scanem 1')
-        self._query('psteps 0')
+        self._query('psteps 50')
         self._query('plimit 1')
         self._query('ppoint 3')
         self._query('pdatap 0 %d' % E0)
         self._query('pholdt 0 %d' % t0)
         self._query('pdatap 1 %d' % E1)
         self._query('pholdt 1 %d' %t1) #
-        self._query('pincrm 1 1 1')
+        self._query('pincrm 1 0 0')
         self._query('pdatap 2 %d' % Efinal)
         self._query('pholdt 2 10')
-        self._query('pincrm 2 1 1')
+        self._query('pincrm 2 0 1')
         self._query('pdatap 3 %d' % Efinal)
         self._query('pholdt 3 10')
-        self._query('pincrm 3 0 0')
+        self._query('pincrm 3 0 1')
         self._query('plendm 1')
         self._query('pprogm?')
 
@@ -333,6 +331,7 @@ class EC301(object):
         self.stream.start()
 
         # start the scan
+        self._query('trgarm 0')
         self._query('pstart %d' % trgcode)
 
     def potentialCycle(self, t0=1, E0=.2, E1=1, E2=0, v=.100, cycles=1, trigger=False):
@@ -392,6 +391,7 @@ class EC301(object):
         self.stream.start()
 
         # start the scan
+        self._query('trgarm 0')
         self._query('rampst %d' % trgcode)
 
     def stop(self):
@@ -405,7 +405,7 @@ class EC301(object):
     ### Illustrations and tests, not for Tango exposure ###
     #######################################################
 
-    def example_step(self):
+    def example_step(self, trig=False):
         """
         An illustration and test of the potential step program and data acquisition.
         """
@@ -413,12 +413,12 @@ class EC301(object):
         self.averaging=256
         time.sleep(2)
         self.range = -5
-        self.potentialStep(t0=2, t1=3, E0=.02, E1=.05, return_to_E0=True, trigger=False)
+        self.potentialStep(t0=2, t1=3, E0=.02, E1=.05, return_to_E0=True, trigger=trig)
         t0 = time.time()
         while not self.stream.done:
             print 'data points so far: %d' % len(self.stream.E)
             # illustrating how an acquisition can be stopped:
-            if time.time() - t0 > 30:
+            if time.time() - t0 > 10:
                 print 'stopping'
                 # you can just cancel the stream (the program then continues)
                 #self.stream.cancel = True
@@ -438,7 +438,7 @@ class EC301(object):
         plt.show()
         return E, I, aux
 
-    def example_cv(self):
+    def example_cv(self, trig=False):
         """
         An illustration and test of the potential step program and data acquisition.
         """
@@ -446,7 +446,7 @@ class EC301(object):
         self.averaging=256
         time.sleep(2)
         self.range = -3
-        self.potentialCycle(v=.300, E0=.05, E1=.8, E2=-.2, cycles=1)
+        self.potentialCycle(v=.300, E0=.05, E1=.8, E2=-.2, cycles=2, trigger=trig)
         while not self.stream.done:
             print 'data points so far: %d' % len(self.stream.E)
             time.sleep(.1)
@@ -474,6 +474,6 @@ if __name__ == '__main__':
     Example usage.
     """
     ec301 = EC301(debug=False)
-#    ec301.example_step()
-    ec301.example_cv()
+    #ec301.example_step(trig=0)
+    ec301.example_cv(trig=1)
 
