@@ -339,22 +339,48 @@ class EC301(object):
         """
         self._query('plstop')
         self._query('rampen')
+    
+    #######################################################
+    ### Illustrations and tests, not for Tango exposure ###
+    #######################################################
+
+    def example(self):
+        """
+        An illustration and test of the potential step program and data acquisition.
+        """
+        ec301.setPotential(-.1)
+        ec301.averaging=256
+        time.sleep(2)
+        ec301.range = -5
+        ec301.potentialStep(t0=2, t1=3, E0=.02, E1=.05, return_to_E0=True, trigger=False)
+        t0 = time.time()
+        while not ec301.stream.done:
+            print 'data points so far: %d' % len(ec301.stream.E)
+            # illustrating how an acquisition can be stopped:
+            if time.time() - t0 > 30:
+                print 'stopping'
+                # you can just cancel the stream (the program then continues)
+                #ec301.stream.cancel = True
+                # or you can stop the scan (the stream then detects this and also finishes)
+                ec301.stop()
+            time.sleep(.1)
+        E = ec301.stream.E
+        I = ec301.stream.I
+        aux = ec301.stream.I
+        print len(E), len(I)
+        print ec301.error
+
+        import matplotlib.pyplot as plt
+        t = np.arange(len(E)) * 4e-6 * 256
+        plt.figure(); plt.plot(t, E)
+        plt.figure(); plt.plot(t, I)
+        plt.show()
+        return E, I, aux
 
 if __name__ == '__main__':        
+    """
+    Example usage.
+    """
     ec301 = EC301(debug=False)
-    ec301.setPotential(-.1)
-    ec301.averaging=256
-    time.sleep(2)
-    ec301.potentialStep(2, 2, .45, .65, return_to_E0=True, trigger=False)
-    while not ec301.stream.done:
-        time.sleep(.1)
-    E = ec301.stream.E
-    I = ec301.stream.I
-    print len(E), len(I)
-    print ec301.error
-    del ec301
+    ec301.example()
 
-    import matplotlib.pyplot as plt
-    plt.figure(); plt.plot(E)
-    plt.figure(); plt.plot(I)
-    plt.show()
