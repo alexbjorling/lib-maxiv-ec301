@@ -83,7 +83,7 @@ class Stream(object):
         """
         Actual worker function.
         """
-        self.debug('clearing %d bytes first' % len(_clear_incoming_buffer(self.dev.socket)))
+        self.debug('_start: clearing %d bytes first' % len(_clear_incoming_buffer(self.dev.socket)))
         self.dev._query('getbda 1')
         t0 = time.time()
         self.buf = ''
@@ -94,10 +94,9 @@ class Stream(object):
             ready = select.select([self.dev.socket], [], [], TIMEOUT)
             if ready[0]:
                 self.buf += self.dev.socket.recv(BUF_SIZE)
-                self.debug("read data, total %d" % len(self.buf))
         self.dev._query('getbda 0')
-        self.debug('cleared %d bytes afterwards' % len(_clear_incoming_buffer(self.dev.socket)))
-        self.debug("received total of %d bytes" % len(self.buf))
+        self.debug('_start: cleared %d bytes afterwards' % len(_clear_incoming_buffer(self.dev.socket)))
+        self.debug("_start: received total of %d bytes, saved %d data points" % (len(self.buf), len(self.E)))
         self.done = True
 
     def parser(self):
@@ -114,28 +113,28 @@ class Stream(object):
         while True:
             # do we have enough data to read a header?
             while len(self.buf) < offset + 16:
-                self.debug("yielding, no complete header, len(self.buf) = %d" % len(self.buf))
+                self.debug("parser: yielding, no complete header, len(self.buf) = %d" % len(self.buf))
                 yield
-            self.debug("*reading a header")
+            self.debug("parser: reading a header")
             pkt_counter, payload = struct.unpack('xxHIxxxxxxxx', self.buf[offset:16+offset])
             n_frames = payload / 16
             # do we have enough data to read an entire packet?
             while len(self.buf) < offset + 16 + 16 * n_frames + 24:
-                self.debug("yielding, no complete packet, len(self.buf) = %d" % len(self.buf))
+                self.debug("parser: yielding, no complete packet, len(self.buf) = %d" % len(self.buf))
                 yield
-            self.debug("*reading complete packet %d with %d frames"%(pkt_counter, n_frames))
+            self.debug("parser: reading complete packet %d with %d frames..."%(pkt_counter, n_frames))
             for i in range(n_frames):
                 # unpack data
                 fast, aux_, I_, E_ = struct.unpack(frame_fmt, self.buf[16+16*i+offset:16+16*(i+1)+offset])
                 running_ = bool(fast & scan_running_mask)
                 # filtering conditions
-                first_trigger_detected |= (aux_ < 1.0)
+                first_trigger_detected |= (aux_ < 2.0)
                 if self.filter_pre_trig and not first_trigger_detected:
-                    self.debug('filtered out a pre-trigger frame')
+                    self.debug('parser: filtered out a pre-trigger frame')
                     continue
                 scan_started |= running_
                 if self.filter_pre_scan and not scan_started:
-                    self.debug('filtered out a pre-scan frame')
+                    self.debug('parser: filtered out a pre-scan frame')
                     continue
                 # store data
                 self.E.append(E_)
@@ -143,7 +142,6 @@ class Stream(object):
                 self.aux.append(aux_)
                 self.running.append(running_)
                 self.raw.append(fast)
-                self.debug('packet %d frame %d, scanning? %s' % (pkt_counter, i, running_))
                 # end conditions
                 if self.max_data_points and (len(self.E) >= self.max_data_points):
                     return
