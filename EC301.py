@@ -41,7 +41,6 @@ class EC301(object):
     id:      device identification string
     error:   the last error message issued
     running: is the device running a scan program?
-    armed:   is the device armed and waiting for triggers?
 
     Properties (r/w):
     mode:       Control loop mode, 'POTENTIOSTAT, 'GALVANOSTAT' or 'ZRA'
@@ -61,6 +60,8 @@ class EC301(object):
     setPotential:   Set and hold a constant potential with no scan program
     setCurrent:     Set and hold a constant current with no scan program
     potentialStep:  Run a potential step experiment and record the data
+    potentialCycle: Run a Cyclic voltammetry experiment and record the data
+    stop:           Stop any ongoing scans
     """
 
     # map from the device's mode code to clear text
@@ -94,6 +95,7 @@ class EC301(object):
 
         # Always keep a Stream instance to allow checking the done state
         self.stream = Stream(self)
+        self.stream.done = True # means not running
 
         # Stop any lingering scans
         self.stop()
@@ -164,13 +166,7 @@ class EC301(object):
     ### Running
     @property
     def running(self):
-        raise NotImplementedError # this command doesn't behave, device always gives true. Emailed SRS.
-        return bool(int(self._query('scntrg?')))
-
-    ### Armed
-    @property
-    def armed(self):
-        return bool(int(self._query('trgarm?')))
+        return not self.stream.done
 
     #############################
     ### Read/write properties ###
@@ -447,10 +443,13 @@ class EC301(object):
         self.averaging=256
         time.sleep(2)
         self.range = -3
+        print 'running: %s' % str(self.running)
         self.potentialCycle(v=.300, E0=.05, E1=.8, E2=-.2, cycles=2, trigger=trig)
+        print 'running: %s' % str(self.running)
         while not self.stream.done:
-            print 'data points so far: %d' % len(self.stream.E)
+            print 'data points so far: %d, running: %s' % (len(self.stream.E), str(self.running))
             time.sleep(.1)
+        print 'running: %s' % str(self.running)
         # there's a bug in the CV protocol (emailed SRS about this),
         # the device doesn't leave its scanning mode. This means you
         # can't set a new potential afterwards, although the scanning
