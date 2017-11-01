@@ -7,7 +7,7 @@ from Stream import Stream
 
 # to do:
 #   * investigate why it doesn't trigger
-#   * finalize CV
+#   * get rid of CV workaround (below, emailed SRS)
 #   * why is there so much current noise?
 #   * the current setup is fine for bursts, but for fly scanning we need continuous triggering, so either re-arm between shots (bad idea, will require longer latencies) or do acquisitions over the full line and sample the trigger on aux.
 
@@ -334,7 +334,15 @@ class EC301(object):
 
     def potentialCycle(self, t0=1, E0=.2, E1=1, E2=0, v=.100, cycles=1, trigger=False):
         """
-        Carry out a CV experiment.
+        Carry out a CV experiment. 
+
+        There is an apparent bug in the API here, as the device gets
+        stuck in the scanning state. There is a workaround, calling
+        stop() once the data collection is done. See example usage.
+
+        There is always a short break in potential control, apparently 
+        that's built into the 'ramprs' command of the API and there's 
+        no obvious way around it.
         
         t0, E0: Initial hold, time and potential
         E1:         First vertex, determines the initial scan direction
@@ -346,6 +354,7 @@ class EC301(object):
 
         # checks and settings
         if not self.mode == 'POTENTIOSTAT':
+            self.debug('Device not in potentiostat mode, setting this.')
             self.mode = 'POTENTIOSTAT'
 
         # format the parameters
@@ -359,6 +368,12 @@ class EC301(object):
 
         # write the program
         self._query('ramprs')
+        if cycles > 1:
+            self._query('scantp 0')
+            self._query('rampcy %d' % (cycles-1))
+        else:
+            self._query('scantp 1')
+        self._query('scanem 1')
         self._query('ramppt 0 %d' % E0)
         self._query('ramppt 1 %d' % E1)
         self._query('ramppt 2 %d' % E2)
@@ -367,12 +382,6 @@ class EC301(object):
         self._query('rampdt 0 %d' % hold)
         self._query('rampdt 1 0')
         self._query('rampdt 2 0')
-        if cycles > 1:
-            self._query('scantp 0')
-            self._query('rampcy %d' % (cycles-1))
-        else:
-            self._query('scantp 1')
-        self._query('scanem 1')
         self._query('ramppg? 0')
 
         # make a stream instance and start recording
@@ -434,10 +443,17 @@ class EC301(object):
         self.averaging=256
         time.sleep(2)
         self.range = -3
-        self.potentialCycle(v=.300, E0=.05, E2=-.2, E1=.8, cycles=1)
+        self.potentialCycle(v=.300, E0=.05, E1=.8, E2=-.2, cycles=1)
         while not self.stream.done:
             print 'data points so far: %d' % len(self.stream.E)
             time.sleep(.1)
+        # there's a bug in the CV protocol (emailed SRS about this),
+        # the device doesn't leave its scanning mode. This means you
+        # can't set a new potential afterwards, although the scanning
+        # bit in the binary stream does switch off. This is the workaround:
+        self.stop()             #
+        self.setPotential(.05)  #
+        #########################
         E = self.stream.E
         I = self.stream.I
         print len(E), len(I)
@@ -455,6 +471,6 @@ if __name__ == '__main__':
     Example usage.
     """
     ec301 = EC301(debug=False)
-    ec301.example_step()
-#    ec301.example_cv()
+#    ec301.example_step()
+    ec301.example_cv()
 
