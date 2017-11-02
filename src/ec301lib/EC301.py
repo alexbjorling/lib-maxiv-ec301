@@ -451,75 +451,85 @@ class EC301(object):
         t = np.arange(len(self.stream.E)) * 4e-6 * self.averaging
         return t, self.stream.E, self.stream.I, self.stream.aux, self.stream.raw
     
-    #######################################################
-    ### Illustrations and tests, not for Tango exposure ###
-    #######################################################
 
-    def example_step(self, trig=False):
-        """
-        An illustration and test of the potential step program and data acquisition.
-        """
-        self.setPotential(-.1)
-        self.averaging=256
-        time.sleep(2)
-        self.range = -5
-        self.potentialStep(t0=2, t1=3, E0=.02, E1=.05, return_to_E0=True, trigger=trig)
-
-        t0 = time.time()
-        while not self.stream.done:
-            print 'data points so far: %d' % len(self.stream.E)
-            # illustrating how an acquisition can be stopped:
-            if time.time() - t0 > 10:
-                print 'stopping'
-                # you can just cancel the stream (the program then continues)
-                #self.stream.cancel = True
-                # or you can stop the scan (the stream then detects this and also finishes)
-                self.stop()
-            time.sleep(.1)
-
-        t, E, I, aux, raw = ec301.readout()
-        print len(E), len(I)
-        print self.error
-
-        import matplotlib.pyplot as plt
-        plt.figure(); plt.plot(t, E)
-        plt.figure(); plt.plot(t, I)
-        plt.show()
-        return E, I, aux
-
-    def example_cv(self, trig=False):
-        """
-        An illustration and test of the potential step program and data acquisition.
-        """
-        self.setPotential(-.1)
-        self.averaging=256
-        time.sleep(2)
-        self.range = -3
-
-        self.potentialCycle(v=.500, E0=.05, E1=.8, E2=-.2, cycles=1, trigger=trig)
-        while not self.stream.done:
-            print 'data points so far: %d, running: %s' % (len(self.stream.E), str(self.running))
-            time.sleep(.1)
-        # there's a bug in the CV protocol (emailed SRS about this),
-        # the device doesn't leave its scanning mode. This means you
-        # can't set a new potential afterwards, although the scanning
-        # bit in the binary stream does switch off. This is the workaround:
-        self.stop()             #
-        self.setPotential(.05)  #
-        #########################
-
-        t, E, I, aux, raw = self.readout()
-        import matplotlib.pyplot as plt
-        plt.figure(); plt.plot(t, E)
-        plt.figure(); plt.plot(t, I)
-        plt.show()
-        return E, I
-
-if __name__ == '__main__':        
+def example_usage_step():
     """
-    Example usage.
+    An illustration and test of the potential step program and data acquisition.
     """
     ec301 = EC301(debug=True)
-#    ec301.example_step(trig=0)
-#    ec301.example_cv(trig=0)
+
+    ec301.setPotential(-.1)
+    ec301.averaging=256
+    time.sleep(2)
+    ec301.range = -5
+    ec301.potentialStep(t0=2, t1=3, E0=.02, E1=.05, return_to_E0=True, trigger=False)
+
+    t0 = time.time()
+    while not ec301.stream.done:
+        print 'data points so far: %d' % len(ec301.stream.E)
+        # illustrating how an acquisition can be stopped:
+        if time.time() - t0 > 10:
+            print 'stopping'
+            # you can just cancel the stream (the program then continues)
+            #ec301.stream.cancel = True
+            # or you can stop the scan (the stream then detects this and also finishes)
+            ec301.stop()
+        time.sleep(.1)
+
+    t, E, I, aux, raw = ec301.readout()
+    print len(E), len(I)
+    print ec301.error
+
+    import matplotlib.pyplot as plt
+    plt.figure(); plt.plot(t, E)
+    plt.figure(); plt.plot(t, I)
+    plt.show()
+
+def example_usage_cv():
+    """
+    An illustration and test of the potential step program and data acquisition.
+    """
+    ec301 = EC301(debug=True)
+
+    ec301.setPotential(-.1)
+    ec301.averaging=256
+    time.sleep(2)
+    ec301.range = -3
+
+    ec301.potentialCycle(v=.500, E0=.05, E1=.8, E2=-.2, cycles=1, trigger=False)
+    while not ec301.stream.done:
+        print 'data points so far: %d, running: %s' % (len(ec301.stream.E), str(ec301.running))
+        time.sleep(.1)
+    # there's a bug in the CV protocol (emailed SRS about this),
+    # the device doesn't leave its scanning mode. This means you
+    # can't set a new potential afterwards, although the scanning
+    # bit in the binary stream does switch off. This is the workaround:
+    ec301.stop()             #
+    ec301.setPotential(.05)  #
+    #########################
+
+    t, E, I, aux, raw = ec301.readout()
+    import matplotlib.pyplot as plt
+    plt.figure(); plt.plot(t, E)
+    plt.figure(); plt.plot(t, I)
+    plt.show()
+
+def example_usage_bias():
+    """
+    An illustration and test of acquiring data at constant potential.
+    """
+    ec301 = EC301(debug=True)
+    ec301.autorange = True
+    ec301.setPotential(.2)
+    time.sleep(.1)
+    ec301.acquire(time=2.0, trigger=False)
+
+    while not ec301.stream.done:
+        time.sleep(.1)
+    
+    t, E, I, aux, raw = ec301.readout()
+    import matplotlib.pyplot as plt
+    plt.figure(); plt.plot(t, E)
+    plt.figure(); plt.plot(t, I)
+    plt.show()
 
