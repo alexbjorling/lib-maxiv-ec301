@@ -8,6 +8,7 @@ from Stream import Stream
 # to do:
 #   * fix the potential step triggering weirdness (emailed SRS)
 #   * get rid of CV workaround (below, emailed SRS)
+#   * think about E/I conventions
 #   * learn about noise and grounding
 
 # sardana outline:
@@ -137,6 +138,15 @@ class EC301(object):
         self.debug("Got response '%s'" % answer)
 
         return answer
+
+    def _run_txt(self, filename):
+        """
+        Test method for running programs from text files.
+        """
+        with file(filename) as fp:
+            for line in fp:
+                if not line.strip().startswith('#'):
+                    self._query(line.strip().split('#')[0])
 
     ############################
     ### Read-only properties ###
@@ -510,6 +520,6 @@ if __name__ == '__main__':
     Example usage.
     """
     ec301 = EC301(debug=True)
-    ec301.example_step(trig=0)
-    ec301.example_cv(trig=0)
+#    ec301.example_step(trig=0)
+#    ec301.example_cv(trig=0)
 
