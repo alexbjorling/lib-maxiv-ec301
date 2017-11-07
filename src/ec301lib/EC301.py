@@ -50,8 +50,9 @@ class EC301(object):
     Properties (r/w):
     mode:       Control loop mode, 'POTENTIOSTAT, 'GALVANOSTAT' or 'ZRA'
     enabled:    Whether or not the cell is under control of the device
-    range:      Current range setting expressed as log(range/A), so -3 is 1mA, 
+    Irange:     Current range setting expressed as log(range/A), so -3 is 1mA, 
                 -4 is 100uA, etc, in the range -9 ... 0
+    Erange:     Potential ADC range setting in Volts, 2, 5, or 15.
     autorange:  Whether or not autoranging is on, only relevant to 
                 potentiostat mode.
     bandwidth:  Control loop bandwidth in log(BW/Hz) so 3 is 1kHz, 1 is 10Hz, 
@@ -60,6 +61,10 @@ class EC301(object):
                 or fast scans).
     averaging:  The number of 4us data points averaged for each measurement, in
                 the range 1, 2, 4, ..., 256 (where 256 gives ~1 ms averaging).
+    Ilowpass:   Whether or not to apply the 10 kHz anti-aliasing filter in 
+                front of the current ADC.
+    Elowpass:   Whether or not to apply the 10 kHz anti-aliasing filter in 
+                front of the voltage ADC.
 
     Commands:
     setPotential:   Set and hold a constant potential with no scan program
@@ -74,7 +79,10 @@ class EC301(object):
     MODE_MAP = {0: 'POTENTIOSTAT', 1: 'GALVANOSTAT', 2: 'ZRA'}
 
     # map from current range code to log(range/A), p. 89 of the manual
-    RANGE_MAP = {i:-(i-1) for i in range(1, 10+1)}
+    IRANGE_MAP = {i:-(i-1) for i in range(1, 10+1)}
+
+    # map from voltage range code to actual range in volts
+    ERANGE_MAP = {0: 2, 1: 5, 2: 15}
 
     # map from control loop bandwidth code to log(BW/hz), p. 79 of the manual
     BANDWIDTH_MAP = {i: 6-i for i in range(5+1)}
@@ -98,6 +106,24 @@ class EC301(object):
         # very easily gets jammed from repeated commands.
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect((self.host, self.port))
+
+        # General initialization
+        self.enabled = False
+        self._query('BSTREN 0')     # disable booster
+        self._query('LPFILE 0')     # disable front panel E low-pass filter
+        self._query('LPFILI 0')     # disable front panel I low-pass filter
+        self.Erange = 2             # +- 2V
+        self._query('AUTOTB 0')     # use only internal timebase
+        self.Elowpass = True        # 10 kHz filter on E
+        self.Ilowpass = True        # 10 kHz filter on I
+        self._query('IRENAB 0')     # disable IR compensation
+        self._query('IRTYPE 1')     # positive feedback
+        self._query('CELIMT 1')     # enable compliance limit
+        self.compliance_limit = 3.0 # compliance voltage limit +- 3V
+        self._query('BRENAB 0')     # bias rejection off
+        self._query('DCNTRL 0')     # direct control off
+        self._query('ADDSCN 0')     # ignore external input voltage
+        self.enabled = True
 
         # Always keep a Stream instance to allow checking the done state
         self.stream = Stream(self)
@@ -211,18 +237,29 @@ class EC301(object):
 
     ### Current range as log(range/A)
     @property
-    def range(self):
-        return self.RANGE_MAP[int(self._query('irange?'))]
+    def Irange(self):
+        return self.IRANGE_MAP[int(self._query('irange?'))]
 
-    @range.setter
-    def range(self, rng):
-        assert rng in self.RANGE_MAP.values()
+    @Irange.setter
+    def Irange(self, rng):
+        assert rng in self.IRANGE_MAP.values()
         if self.autorange:
             self.autorange = False
-        target = reversed_dict(self.RANGE_MAP)[rng]
+        target = reversed_dict(self.IRANGE_MAP)[rng]
         self._query('irange %d' % target)
 
-    ### Autorange on/off
+    ### Potential range in Volts
+    @property
+    def Erange(self):
+        return self.ERANGE_MAP[int(self._query('eadcrg?'))]
+
+    @Erange.setter
+    def Erange(self, rng):
+        assert rng in self.ERANGE_MAP.values()
+        target = reversed_dict(self.ERANGE_MAP)[rng]
+        self._query('eadcrg %d' % target)
+
+    ### Current autorange on/off
     @property
     def autorange(self):
         return bool(int(self._query('irnaut?')))
@@ -257,6 +294,40 @@ class EC301(object):
         target = reversed_dict(self.BANDWIDTH_MAP)[bw]
         self._query('clbwth %d' % target)
 
+    ### I ADC low-pass filter
+    @property
+    def Ilowpass(self):
+        return int(self._query('iadcfl?')) == 2
+
+    @Ilowpass.setter
+    def Ilowpass(self, val):
+        assert val in [0, 1, True, False]
+        code = {True: 2, False: 1}[val]
+        self._query('iadcfl %d' % code)
+
+    ### E ADC low-pass filter
+    @property
+    def Elowpass(self):
+        return int(self._query('eadcfl?')) == 2
+
+    @Elowpass.setter
+    def Elowpass(self, val):
+        assert val in [0, 1, True, False]
+        code = {True: 2, False: 0}[val]
+        self._query('eadcfl %d' % code)
+
+    ### Compliance voltage limit
+    @property
+    def compliance_limit(self):
+        return float(self._query('celimv?')) / 1000.0
+
+    @compliance_limit.setter
+    def compliance_limit(self, val):
+        value = int(round(val * 1000))
+        value = max(value, 500)
+        value = min(value, 30000)
+        self._query('celimv %d' % value)
+
     ################
     ### Commands ###
     ################
@@ -278,17 +349,17 @@ class EC301(object):
     def setCurrent(self, cur):
         """
         Apply a current without setting up a scan, no data acquisition.
-        Sets the range based on the requested current.
+        Sets the Irange based on the requested current.
         """
         try:
             self.autorange = False
             if not self.mode == 'GALVANOSTAT':
                 self._query('ecmode 1; ceenab 1')
             if np.isclose(cur, 0, atol=1e-9):
-                irange = min(self.RANGE_MAP.values())
+                irange = min(self.IRANGE_MAP.values())
             else:
                 irange = np.ceil(np.log10(abs(cur/1.5)))
-            self.range = irange
+            self.Irange = irange
             fraction = cur / 10**irange
             result = self._query('ceenab 1; setcur %f; setcur?' % fraction)
             val = float(result) * 10**irange
@@ -406,15 +477,15 @@ class EC301(object):
             self._query('rampcy %d' % (cycles-1))
         else:
             self._query('scantp 1')
-        self._query('scanem 1')
         self._query('ramppt 0 %d' % E0)
         self._query('ramppt 1 %d' % E1)
         self._query('ramppt 2 %d' % E2)
-        self._query('ramprt 0 %d' % rate)
-        self._query('ramprt 1 %d' % rate)
         self._query('rampdt 0 %d' % hold)
         self._query('rampdt 1 0')
         self._query('rampdt 2 0')
+        self._query('ramprt 0 %d' % rate)
+        self._query('ramprt 1 %d' % rate)
+        self._query('scanem 1')
         self._query('ramppg? 0')
 
         # make a stream instance and start recording
@@ -452,7 +523,7 @@ class EC301(object):
         return t, self.stream.E, self.stream.I, self.stream.aux, self.stream.raw
     
 
-def example_usage_step():
+def example_usage_step(trg=False):
     """
     An illustration and test of the potential step program and data acquisition.
     """
@@ -461,8 +532,8 @@ def example_usage_step():
     ec301.setPotential(-.1)
     ec301.averaging=256
     time.sleep(2)
-    ec301.range = -5
-    ec301.potentialStep(t0=2, t1=3, E0=.02, E1=.05, return_to_E0=True, trigger=False)
+    ec301.Irange = -5
+    ec301.potentialStep(t0=2, t1=3, E0=.02, E1=.05, return_to_E0=True, trigger=trg)
 
     t0 = time.time()
     while not ec301.stream.done:
@@ -485,7 +556,7 @@ def example_usage_step():
     plt.figure(); plt.plot(t, I)
     plt.show()
 
-def example_usage_cv():
+def example_usage_cv(trg=False):
     """
     An illustration and test of the potential step program and data acquisition.
     """
@@ -494,9 +565,9 @@ def example_usage_cv():
     ec301.setPotential(-.1)
     ec301.averaging=256
     time.sleep(2)
-    ec301.range = -3
+    ec301.Irange = -3
 
-    ec301.potentialCycle(v=.500, E0=.05, E1=.8, E2=-.2, cycles=1, trigger=False)
+    ec301.potentialCycle(v=.500, E0=.05, E1=.8, E2=-.2, cycles=1, trigger=trg)
     while not ec301.stream.done:
         print 'data points so far: %d, running: %s' % (len(ec301.stream.E), str(ec301.running))
         time.sleep(.1)
