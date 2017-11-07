@@ -65,6 +65,7 @@ class EC301(object):
                 front of the current ADC.
     Elowpass:   Whether or not to apply the 10 kHz anti-aliasing filter in 
                 front of the voltage ADC.
+    compliance_limit: Limit on the compliance voltage in V
 
     Commands:
     setPotential:   Set and hold a constant potential with no scan program
