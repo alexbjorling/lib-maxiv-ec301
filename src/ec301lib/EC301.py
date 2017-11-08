@@ -7,7 +7,6 @@ from Stream import Stream
 
 # to do:
 #   * fix the potential step triggering weirdness (emailed SRS)
-#   * get rid of CV workaround (below, emailed SRS)
 #   * think about E/I conventions
 #   * learn about noise and grounding
 
@@ -572,13 +571,8 @@ def example_usage_cv(trg=False):
     while not ec301.stream.done:
         print 'data points so far: %d, running: %s' % (len(ec301.stream.E), str(ec301.running))
         time.sleep(.1)
-    # there's a bug in the CV protocol (emailed SRS about this),
-    # the device doesn't leave its scanning mode. This means you
-    # can't set a new potential afterwards, although the scanning
-    # bit in the binary stream does switch off. This is the workaround:
-    ec301.stop()             #
-    ec301.setPotential(.05)  #
-    #########################
+    # the scan doesn't actually stop at E0, but at E2. You can go back manually:
+    ec301.setPotential(.05)
 
     t, E, I, aux, raw = ec301.readout()
     import matplotlib.pyplot as plt
