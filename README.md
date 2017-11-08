@@ -1,2 +1,1 @@
-TODO:
-* the Moxa interface (implement SocketCommunicator)
+Driver library for the Stanford EC301 potentiostat
