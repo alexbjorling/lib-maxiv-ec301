@@ -149,6 +149,10 @@ class EC301(object):
         """
         s = self.socket
 
+        # if a stream is running, it makes no sense to ask a question
+        if '?' in cmd and self.running:
+            return None
+
         # send the command
         s.send(cmd + '\n')
         self.debug("Sent cmd '%s'" % cmd)
