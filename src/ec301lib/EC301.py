@@ -5,19 +5,6 @@ import numpy as np
 import struct
 from Stream import Stream
 
-# to do:
-#   * fix the potential step triggering weirdness (emailed SRS)
-#   * think about E/I conventions
-#   * learn about noise and grounding
-
-# sardana outline:
-#   * like with the PI/scancontrol device, use different controllers for simple potential/current application and for scans
-#       * ec301_ctrl: motors connected to setPotential and setCurrent (with controller attributes for range etc), pstat/gstat mode can be switched automatically if needed
-#       * ec301_acq_ctrl: 1d exp channels echem_E, echem_I, echem_aux, echem_raw, echem_running (or filter that out?). One of these will be the master axis that starts the scan.
-#   * the type of scan and the parameters has to be configured before acquisition, with controller attributes
-#   * because of the two controllers, we will need a Tango device
-#   * the Tango device will have to filter and average fly scanning data
-
 def reversed_dict(dct):
     """
     Helper function.
@@ -25,6 +12,7 @@ def reversed_dict(dct):
     rev = {v:k for k, v in dct.iteritems()}
     assert len(rev) == len(dct)
     return rev
+
 
 class EC301(object):
     """
