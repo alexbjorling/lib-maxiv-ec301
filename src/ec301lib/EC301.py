@@ -546,6 +546,8 @@ def example_usage_step(trg=False):
     import matplotlib.pyplot as plt
     plt.figure(); plt.plot(t, E)
     plt.figure(); plt.plot(t, I)
+    if trg:
+        plt.figure(); plt.plot(t, aux)
     plt.show()
 
 def example_usage_cv(trg=False):
@@ -570,9 +572,11 @@ def example_usage_cv(trg=False):
     import matplotlib.pyplot as plt
     plt.figure(); plt.plot(t, E)
     plt.figure(); plt.plot(t, I)
+    if trg:
+        plt.figure(); plt.plot(t, aux)
     plt.show()
 
-def example_usage_bias():
+def example_usage_bias(trg=False):
     """
     An illustration and test of acquiring data at constant potential.
     """
@@ -580,7 +584,7 @@ def example_usage_bias():
     ec301.autorange = True
     ec301.setPotential(.2)
     time.sleep(.1)
-    ec301.acquire(time=2.0, trigger=False)
+    ec301.acquire(time=2.0, trigger=trg)
 
     while not ec301.stream.done:
         time.sleep(.1)
@@ -590,4 +594,6 @@ def example_usage_bias():
     plt.figure(); plt.plot(t, E)
     plt.figure(); plt.plot(t, I)
     plt.show()
+
+example_usage_bias(trg=True)
 
