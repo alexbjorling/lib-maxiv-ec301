@@ -2,7 +2,6 @@ import time
 import select
 import struct
 import numpy as np
-from collections import deque
 import threading
 
 BUF_SIZE = 4096

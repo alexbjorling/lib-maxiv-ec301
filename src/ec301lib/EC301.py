@@ -5,19 +5,6 @@ import numpy as np
 import struct
 from Stream import Stream
 
-# to do:
-#   * fix the potential step triggering weirdness (emailed SRS)
-#   * think about E/I conventions
-#   * learn about noise and grounding
-
-# sardana outline:
-#   * like with the PI/scancontrol device, use different controllers for simple potential/current application and for scans
-#       * ec301_ctrl: motors connected to setPotential and setCurrent (with controller attributes for range etc), pstat/gstat mode can be switched automatically if needed
-#       * ec301_acq_ctrl: 1d exp channels echem_E, echem_I, echem_aux, echem_raw, echem_running (or filter that out?). One of these will be the master axis that starts the scan.
-#   * the type of scan and the parameters has to be configured before acquisition, with controller attributes
-#   * because of the two controllers, we will need a Tango device
-#   * the Tango device will have to filter and average fly scanning data
-
 def reversed_dict(dct):
     """
     Helper function.
@@ -25,6 +12,7 @@ def reversed_dict(dct):
     rev = {v:k for k, v in dct.iteritems()}
     assert len(rev) == len(dct)
     return rev
+
 
 class EC301(object):
     """
@@ -525,81 +513,4 @@ class EC301(object):
         """
         t = np.arange(len(self.stream.E)) * 4e-6 * self.averaging
         return t, self.stream.E, self.stream.I, self.stream.aux, self.stream.raw
-    
-
-def example_usage_step(trg=False):
-    """
-    An illustration and test of the potential step program and data acquisition.
-    """
-    ec301 = EC301(debug=True)
-
-    ec301.setPotential(-.1)
-    ec301.averaging=256
-    time.sleep(2)
-    ec301.Irange = -5
-    ec301.potentialStep(t0=2, t1=3, E0=.02, E1=.05, return_to_E0=True, trigger=trg)
-
-    t0 = time.time()
-    while not ec301.stream.done:
-        print 'data points so far: %d' % len(ec301.stream.E)
-        # illustrating how an acquisition can be stopped:
-        if time.time() - t0 > 10:
-            print 'stopping'
-            # you can just cancel the stream (the program then continues)
-            #ec301.stream.cancel = True
-            # or you can stop the scan (the stream then detects this and also finishes)
-            ec301.stop()
-        time.sleep(.1)
-
-    t, E, I, aux, raw = ec301.readout()
-    print len(E), len(I)
-    print ec301.error
-
-    import matplotlib.pyplot as plt
-    plt.figure(); plt.plot(t, E)
-    plt.figure(); plt.plot(t, I)
-    plt.show()
-
-def example_usage_cv(trg=False):
-    """
-    An illustration and test of the potential step program and data acquisition.
-    """
-    ec301 = EC301(debug=True)
-
-    ec301.setPotential(-.1)
-    ec301.averaging=256
-    time.sleep(2)
-    ec301.Irange = -3
-
-    ec301.potentialCycle(v=.500, E0=.05, E1=.8, E2=-.2, cycles=1, trigger=trg)
-    while not ec301.stream.done:
-        print 'data points so far: %d, running: %s' % (len(ec301.stream.E), str(ec301.running))
-        time.sleep(.1)
-    # the scan doesn't actually stop at E0, but at E2. You can go back manually:
-    ec301.setPotential(.05)
-
-    t, E, I, aux, raw = ec301.readout()
-    import matplotlib.pyplot as plt
-    plt.figure(); plt.plot(t, E)
-    plt.figure(); plt.plot(t, I)
-    plt.show()
-
-def example_usage_bias():
-    """
-    An illustration and test of acquiring data at constant potential.
-    """
-    ec301 = EC301(debug=True)
-    ec301.autorange = True
-    ec301.setPotential(.2)
-    time.sleep(.1)
-    ec301.acquire(time=2.0, trigger=False)
-
-    while not ec301.stream.done:
-        time.sleep(.1)
-    
-    t, E, I, aux, raw = ec301.readout()
-    import matplotlib.pyplot as plt
-    plt.figure(); plt.plot(t, E)
-    plt.figure(); plt.plot(t, I)
-    plt.show()
 

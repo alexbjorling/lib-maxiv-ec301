@@ -1,1 +1,2 @@
-Driver library for the Stanford EC301 potentiostat
+Driver library for the Stanford EC301 potentiostat.
+
